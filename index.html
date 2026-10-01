@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voiceprint — Voice Cloning Studio</title>
+<style>
+  :root {
+    --bg: #0c0f14; --card: #151b24; --card2: #1b2331; --line: #263042;
+    --txt: #e8edf4; --mut: #8a97a8; --acc: #7c5cff; --acc2: #4be0c0; --err: #ff6b6b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--txt); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 24px; }
+  .logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo span { color: var(--acc2); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--mut); margin-bottom: 14px; }
+  input[type=text], textarea, select {
+    width: 100%; background: var(--card2); color: var(--txt); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px; font-size: 15px; outline: none;
+  }
+  textarea { min-height: 110px; resize: vertical; font-family: inherit; }
+  input[type=text]:focus, textarea:focus, select:focus { border-color: var(--acc); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    background: var(--acc); color: #fff; border: 0; border-radius: 10px; padding: 12px 18px;
+    font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 10px;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--mut); }
+  .hint { font-size: 13px; color: var(--mut); margin-top: 8px; line-height: 1.5; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; background: var(--card2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; margin: 4px 6px 0 0; font-size: 14px; cursor: pointer; }
+  .chip.active { border-color: var(--acc2); color: var(--acc2); }
+  .chip .x { color: var(--mut); font-size: 12px; }
+  #banner { display: none; background: #3a2b12; border: 1px solid #a17b28; color: #ffd884; border-radius: 12px; padding: 14px; margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
+  #playerWrap { display: none; margin-top: 14px; }
+  audio { width: 100%; margin-top: 8px; }
+  .msg { font-size: 14px; margin-top: 10px; min-height: 18px; }
+  .msg.ok { color: var(--acc2); } .msg.err { color: var(--err); }
+  .filebox { margin-top: 10px; display: flex; align-items: center; gap: 10px; background: var(--card2); border: 1px dashed var(--line); border-radius: 10px; padding: 14px; }
+  .filebox .name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pwbar { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 50; align-items: center; justify-content: center; }
+  #pwbar .card { width: 92%; max-width: 380px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ffffff44; border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="pwbar"><div class="card">
+  <h2>App password</h2>
+  <input type="text" id="pwInput" placeholder="Enter password" />
+  <button onclick="savePw()">Unlock</button>
+</div></div>
+
+<div class="wrap">
+  <header>
+    <div class="logo">voice<span>print</span></div>
+    <button class="ghost" onclick="lock()">Lock</button>
+  </header>
+
+  <div id="banner"></div>
+
+  <div class="card">
+    <h2>1 · Clone a voice</h2>
+    <input type="text" id="cloneName" placeholder="Voice name (e.g. Michael)" />
+    <div class="filebox">
+      <button class="ghost" style="margin:0" onclick="fileInput.click()">Choose audio</button>
+      <input type="file" id="fileInput" accept="audio/*" style="display:none" />
+      <div class="name" id="fileName">5–15s of clear speech (mp3/wav/m4a)</div>
+    </div>
+    <button id="cloneBtn" onclick="doClone()">Clone voice</button>
+    <div class="msg" id="cloneMsg"></div>
+    <div class="hint">Tip: one speaker, no background noise. Cloning is free on Inworld; each generation uses your 70 min/month free synthesis.</div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Your voices</h2>
+    <div id="voiceList"><span class="hint">Loading…</span></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · Make it speak</h2>
+    <textarea id="ttsText" placeholder="Type anything and hear it back in your cloned voice…"></textarea>
+    <button id="ttsBtn" onclick="doTts()">Generate speech</button>
+    <div id="playerWrap">
+      <audio id="player" controls></audio>
+      <button class="ghost" onclick="download()">Download mp3</button>
+    </div>
+    <div class="msg" id="ttsMsg"></div>
+  </div>
+</div>
+
+<script>
+let PW = localStorage.getItem("vp_pw") || "";
+let voices = [], selected = null, lastAudio = null;
+const $ = (id) => document.getElementById(id);
+
+function authHeaders() { return PW ? { "X-App-Password": PW } : {}; }
+function lock() { localStorage.removeItem("vp_pw"); PW = ""; location.reload(); }
+function savePw() {
+  PW = $("pwInput").value.trim();
+  localStorage.setItem("vp_pw", PW);
+  $("pwbar").style.display = "none";
+  loadVoices();
+}
+function showPw() { $("pwbar").style.display = "flex"; }
+
+$("fileInput").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (f) $("fileName").textContent = f.name + " (" + (f.size/1024).toFixed(0) + " KB)";
+});
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(opts.headers||{}) },
+  });
+  const data = await res.json().catch(() => ({ error: "Bad response" }));
+  if (res.status === 401) { showPw(); throw new Error("Wrong password"); }
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+function fileToB64(file) {
+  return new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result.split(",")[1]);
+    r.onerror = no;
+    r.readAsDataURL(file);
+  });
+}
+
+async function doClone() {
+  const name = $("cloneName").value.trim();
+  const file = $("fileInput").files[0];
+  const msg = $("cloneMsg");
+  msg.className = "msg"; msg.textContent = "";
+  if (!name || !file) { msg.className = "msg err"; msg.textContent = "Need a name and an audio file."; return; }
+  $("cloneBtn").disabled = true;
+  msg.textContent = "Cloning… this can take up to a minute.";
+  try {
+    const audioBase64 = await fileToB64(file);
+    const out = await api("/api/voices", { method: "POST", body: JSON.stringify({ displayName: name, audioBase64 }) });
+    msg.className = "msg ok"; msg.textContent = "Cloned ✓ (voiceId " + out.voiceId.slice(0, 12) + "…)";
+    $("cloneName").value = ""; $("fileInput").value = ""; $("fileName").textContent = "5–15s of clear speech";
+    await loadVoices();
+    selectVoice(out.voiceId);
+  } catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+  $("cloneBtn").disabled = false;
+}
+
+async function loadVoices() {
+  const el = $("voiceList");
+  try {
+    const data = await api("/api/voices");
+    if (data.needsSetup) {
+      $("banner").style.display = "block";
+      $("banner").innerHTML = "⚠️ No Inworld API key set yet. Sign up free at <b>platform.inworld.ai</b>, create an API key, and add it to finish setup. Cloning and generation will work once the key is in.";
+    }
+    voices = data.voices || [];
+    renderVoices();
+  } catch (e) { el.innerHTML = '<span class="msg err">' + e.message + "</span>"; }
+}
+
+function renderVoices() {
+  const el = $("voiceList");
+  if (!voices.length) { el.innerHTML = '<span class="hint">No voices yet — clone one above.</span>'; return; }
+  el.innerHTML = "";
+  voices.forEach((v) => {
+    const c = document.createElement("div");
+    c.className = "chip" + (selected === v.voiceId ? " active" : "");
+    c.innerHTML = v.displayName + ' <span class="x">·</span> <span style="font-size:11px;opacity:.6">' + v.voiceId.slice(0, 10) + "</span>";
+    c.onclick = () => selectVoice(v.voiceId);
+    el.appendChild(c);
+  });
+}
+
+function selectVoice(voiceId) { selected = voiceId; renderVoices(); }
+
+async function doTts() {
+  const text = $("ttsText").value.trim();
+  const msg = $("ttsMsg");
+  msg.className = "msg"; msg.textContent = "";
+  if (!selected) { msg.className = "msg err"; msg.textContent = "Pick a voice first."; return; }
+  if (!text) { msg.className = "msg err"; msg.textContent = "Type some text first."; return; }
+  $("ttsBtn").disabled = true;
+  msg.innerHTML = '<span class="spinner"></span>Generating…';
+  try {
+    const out = await api("/api/tts", { method: "POST", body: JSON.stringify({ text, voiceId: selected }) });
+    lastAudio = "data:audio/mpeg;base64," + out.audioBase64;
+    $("player").src = lastAudio;
+    $("playerWrap").style.display = "block";
+    msg.className = "msg ok"; msg.textContent = "Done ✓";
+    $("player").play().catch(() => {});
+  } catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+  $("ttsBtn").disabled = false;
+}
+
+function download() {
+  const a = document.createElement("a");
+  a.href = lastAudio;
+  a.download = "voiceprint-" + Date.now() + ".mp3";
+  a.click();
+}
+
+// boot
+if (PW) { loadVoices(); } else { loadVoices(); }
+</script>
+</body>
+</html>
