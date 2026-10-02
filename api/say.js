@@ -56,7 +56,7 @@ module.exports = async (req, res) => {
     });
     if (!out.audioContent) return json(res, 502, { error: "Inworld returned no audio." });
 
-    getDb().collection("voiceapp_generations").add({
+    await getDb().collection("voiceapp_generations").add({
       voiceId,
       voiceName: voiceName || null,
       source: "say",
@@ -66,7 +66,7 @@ module.exports = async (req, res) => {
       tags,
       audioBase64: out.audioContent.length <= 900_000 ? out.audioContent : null,
       at: new Date().toISOString(),
-    }).catch(() => {});
+    }).catch((e) => console.error("log write failed:", e.message));
 
     return json(res, 200, {
       audioBase64: out.audioContent,

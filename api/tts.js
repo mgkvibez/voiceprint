@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
       return json(res, 502, { error: "Inworld returned no audio.", detail: Object.keys(out) });
 
     // Fire-and-forget usage + history log (never blocks the response)
-    getDb().collection("voiceapp_generations").add({
+    await getDb().collection("voiceapp_generations").add({
       voiceId,
       voiceName: voiceName || null,
       source: "type",
@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
       usage: out.usage || null,
       audioBase64: out.audioContent.length <= 900_000 ? out.audioContent : null,
       at: new Date().toISOString(),
-    }).catch(() => {});
+    }).catch((e) => console.error("log write failed:", e.message));
 
     return json(res, 200, { audioBase64: out.audioContent, format: "mp3" });
   } catch (e) {
