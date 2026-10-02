@@ -33,18 +33,25 @@
   .hint { font-size: 13px; color: var(--mut); margin-top: 8px; line-height: 1.5; }
   .chip { display: inline-flex; align-items: center; gap: 8px; background: var(--card2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; margin: 4px 6px 0 0; font-size: 14px; cursor: pointer; }
   .chip.active { border-color: var(--acc2); color: var(--acc2); }
-  .chip .x { color: var(--mut); font-size: 12px; }
   #banner { display: none; background: #3a2b12; border: 1px solid #a17b28; color: #ffd884; border-radius: 12px; padding: 14px; margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
   #playerWrap { display: none; margin-top: 14px; }
   audio { width: 100%; margin-top: 8px; }
   .msg { font-size: 14px; margin-top: 10px; min-height: 18px; }
   .msg.ok { color: var(--acc2); } .msg.err { color: var(--err); }
-  .filebox { margin-top: 10px; display: flex; align-items: center; gap: 10px; background: var(--card2); border: 1px dashed var(--line); border-radius: 10px; padding: 14px; }
-  .filebox .name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .filebox { margin-top: 10px; display: flex; align-items: center; gap: 10px; background: var(--card2); border: 1px dashed var(--line); border-radius: 10px; padding: 14px; flex-wrap: wrap; }
+  .filebox .name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 120px; }
   #pwbar { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 50; align-items: center; justify-content: center; }
   #pwbar .card { width: 92%; max-width: 380px; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ffffff44; border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .meter { background: var(--card2); border-radius: 999px; height: 10px; margin: 10px 0 4px; overflow: hidden; border: 1px solid var(--line); }
+  .meter i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc2), var(--acc)); width: 0%; transition: width .6s; }
+  .usageRow { display: flex; justify-content: space-between; font-size: 13px; color: var(--mut); }
+  .toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+  .toggle button { margin: 0; border-radius: 0; background: transparent; color: var(--mut); }
+  .toggle button.on { background: var(--acc); color: #fff; }
+  .heard { display: none; margin-top: 10px; background: var(--card2); border-left: 3px solid var(--acc2); border-radius: 8px; padding: 10px 12px; font-size: 14px; line-height: 1.5; }
+  .sig { display: inline-block; background: var(--card); border: 1px solid var(--line); color: var(--mut); border-radius: 6px; padding: 2px 8px; font-size: 12px; margin: 4px 4px 0 0; }
 </style>
 </head>
 <body>
@@ -63,11 +70,18 @@
   <div id="banner"></div>
 
   <div class="card">
+    <h2>Usage this month</h2>
+    <div class="meter"><i id="usageBar"></i></div>
+    <div class="usageRow"><span id="usageText">Loading…</span><span id="usageCount"></span></div>
+    <div class="hint" id="usageNote">Free tier: ~70 minutes of synthesis per month. Cloning is free and unlimited.</div>
+  </div>
+
+  <div class="card">
     <h2>1 · Clone a voice</h2>
     <input type="text" id="cloneName" placeholder="Voice name (e.g. Michael)" />
     <div class="filebox">
       <button class="ghost" style="margin:0" onclick="fileInput.click()">Choose audio</button>
-      <button class="ghost" style="margin:0" id="recBtn" onclick="toggleRec()">Record 5-15s</button>
+      <button class="ghost" style="margin:0" id="recBtn" onclick="toggleRec('clone')">Record 5-15s</button>
       <input type="file" id="fileInput" accept="audio/*,.mp3,.m4a,.wav,.ogg,.opus,.aac,.amr,.mp4,.3gp,audio/mpeg,audio/mp4,audio/x-m4a" style="display:none" />
       <div class="name" id="fileName">5–15s of clear speech (mp3/wav/m4a)</div>
     </div>
@@ -83,7 +97,23 @@
 
   <div class="card">
     <h2>3 · Make it speak</h2>
-    <textarea id="ttsText" placeholder="Type anything and hear it back in your cloned voice…"></textarea>
+    <div class="toggle">
+      <button id="modeType" class="on" onclick="setMode('type')">Type it</button>
+      <button id="modeSay" onclick="setMode('say')">Say it (record)</button>
+    </div>
+
+    <div id="typePane">
+      <textarea id="ttsText" placeholder="Type anything and hear it back in your cloned voice…"></textarea>
+    </div>
+
+    <div id="sayPane" style="display:none">
+      <div class="filebox">
+        <button class="ghost" style="margin:0" id="sayRecBtn" onclick="toggleRec('say')">Record your line</button>
+        <div class="name" id="sayFileName">Record yourself saying the line — the cloned voice will repeat it with your delivery.</div>
+      </div>
+      <div class="heard" id="heardBox"></div>
+    </div>
+
     <button id="ttsBtn" onclick="doTts()">Generate speech</button>
     <div id="playerWrap">
       <audio id="player" controls></audio>
@@ -95,7 +125,7 @@
 
 <script>
 let PW = localStorage.getItem("vp_pw") || "";
-let voices = [], selected = null, lastAudio = null;
+let voices = [], selected = null, lastAudio = null, mode = "type";
 const $ = (id) => document.getElementById(id);
 
 function authHeaders() { return PW ? { "X-App-Password": PW } : {}; }
@@ -104,7 +134,7 @@ function savePw() {
   PW = $("pwInput").value.trim();
   localStorage.setItem("vp_pw", PW);
   $("pwbar").style.display = "none";
-  loadVoices();
+  loadVoices(); loadUsage();
 }
 function showPw() { $("pwbar").style.display = "flex"; }
 
@@ -133,6 +163,35 @@ function fileToB64(file) {
   });
 }
 
+// Convert any audio file to 16kHz mono WAV (best for transcription)
+async function toWav16k(file) {
+  const buf = await file.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await ctx.decodeAudioData(buf.slice(0));
+  await ctx.close();
+  const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * 16000), 16000);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const rendered = await off.startRendering();
+  const data = rendered.getChannelData(0);
+  const wav = new ArrayBuffer(44 + data.length * 2);
+  const v = new DataView(wav);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + data.length * 2, true); ws(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 16000, true); v.setUint32(28, 32000, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); ws(36, "data");
+  v.setUint32(40, data.length * 2, true);
+  let o = 44;
+  for (let i = 0; i < data.length; i++, o += 2) {
+    const s = Math.max(-1, Math.min(1, data[i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Uint8Array(wav);
+}
+
 async function doClone() {
   const name = $("cloneName").value.trim();
   const file = $("fileInput").files[0];
@@ -158,7 +217,7 @@ async function loadVoices() {
     const data = await api("/api/voices");
     if (data.needsSetup) {
       $("banner").style.display = "block";
-      $("banner").innerHTML = "⚠️ No Inworld API key set yet. Sign up free at <b>platform.inworld.ai</b>, create an API key, and add it to finish setup. Cloning and generation will work once the key is in.";
+      $("banner").innerHTML = "⚠️ No Inworld API key set yet. Sign up free at <b>platform.inworld.ai</b>, create an API key, and add it to finish setup.";
     }
     voices = data.voices || [];
     renderVoices();
@@ -172,7 +231,7 @@ function renderVoices() {
   voices.forEach((v) => {
     const c = document.createElement("div");
     c.className = "chip" + (selected === v.voiceId ? " active" : "");
-    c.innerHTML = v.displayName + ' <span class="x">·</span> <span style="font-size:11px;opacity:.6">' + v.voiceId.slice(0, 10) + "</span>";
+    c.innerHTML = v.displayName + ' <span style="font-size:11px;opacity:.6">' + v.voiceId.slice(0, 10) + "</span>";
     c.onclick = () => selectVoice(v.voiceId);
     el.appendChild(c);
   });
@@ -180,21 +239,48 @@ function renderVoices() {
 
 function selectVoice(voiceId) { selected = voiceId; renderVoices(); }
 
+function setMode(m) {
+  mode = m;
+  $("modeType").className = m === "type" ? "on" : "";
+  $("modeSay").className = m === "say" ? "on" : "";
+  $("typePane").style.display = m === "type" ? "block" : "none";
+  $("sayPane").style.display = m === "say" ? "block" : "none";
+  $("ttsBtn").textContent = m === "type" ? "Generate speech" : "Say it with the cloned voice";
+}
+
 async function doTts() {
-  const text = $("ttsText").value.trim();
   const msg = $("ttsMsg");
   msg.className = "msg"; msg.textContent = "";
   if (!selected) { msg.className = "msg err"; msg.textContent = "Pick a voice first."; return; }
-  if (!text) { msg.className = "msg err"; msg.textContent = "Type some text first."; return; }
   $("ttsBtn").disabled = true;
-  msg.innerHTML = '<span class="spinner"></span>Generating…';
+
   try {
-    const out = await api("/api/tts", { method: "POST", body: JSON.stringify({ text, voiceId: selected }) });
+    let out;
+    if (mode === "type") {
+      const text = $("ttsText").value.trim();
+      if (!text) { msg.className = "msg err"; msg.textContent = "Type some text first."; $("ttsBtn").disabled = false; return; }
+      msg.innerHTML = '<span class="spinner"></span>Generating…';
+      out = await api("/api/tts", { method: "POST", body: JSON.stringify({ text, voiceId: selected }) });
+      $("heardBox").style.display = "none";
+    } else {
+      const f = sayFile;
+      if (!f) { msg.className = "msg err"; msg.textContent = "Record your line first."; $("ttsBtn").disabled = false; return; }
+      msg.innerHTML = '<span class="spinner"></span>Hearing you, then saying it back…';
+      const wav = await toWav16k(f);
+      const b64 = b64Chunk(wav);
+      out = await api("/api/say", { method: "POST", body: JSON.stringify({ audioBase64: b64, voiceId: selected, encoding: "LINEAR16" }) });
+      const d = out.delivery || {};
+      const sigs = ["emotion", "style", "pitch"].filter((s) => d[s]).map((s) => '<span class="sig">' + s + ": " + d[s] + "</span>").join("");
+      $("heardBox").innerHTML = "Heard: <b>" + out.transcript + "</b><br>" + sigs;
+      $("heardBox").style.display = "block";
+    }
+
     lastAudio = "data:audio/mpeg;base64," + out.audioBase64;
     $("player").src = lastAudio;
     $("playerWrap").style.display = "block";
     msg.className = "msg ok"; msg.textContent = "Done ✓";
     $("player").play().catch(() => {});
+    loadUsage();
   } catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
   $("ttsBtn").disabled = false;
 }
@@ -206,16 +292,28 @@ function download() {
   a.click();
 }
 
-
-// --- recording ---
-let mediaRec = null, recChunks = [], recTimer = null, recStart = 0, recBlob = null;
-
-function setRecName(name, kb) {
-  $("fileName").textContent = name + " (" + kb + " KB)";
+async function loadUsage() {
+  try {
+    const u = await api("/api/usage");
+    $("usageBar").style.width = u.percentUsed + "%";
+    $("usageText").textContent = "~" + u.estMinutes + " of ~" + u.budgetMinutes + " min synthesis used (" + u.percentUsed + "%)";
+    $("usageCount").textContent = u.generations + " generations · " + u.sayModeTranscriptions + " say-mode";
+  } catch (e) { $("usageText").textContent = "Usage unavailable"; }
 }
 
-async function toggleRec() {
-  const btn = $("recBtn");
+function b64Chunk(bytes) {
+  let bin = "";
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(bin);
+}
+
+// --- recording (two instances: clone source + say-mode line) ---
+let mediaRec = null, recChunks = [], recTimer = null, recStart = 0, sayFile = null;
+
+async function toggleRec(kind) {
+  const btn = kind === "clone" ? $("recBtn") : $("sayRecBtn");
+  const nameEl = kind === "clone" ? $("fileName") : $("sayFileName");
   if (mediaRec && mediaRec.state === "recording") { mediaRec.stop(); return; }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -224,36 +322,38 @@ async function toggleRec() {
       if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) { mime = m; break; }
     }
     mediaRec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-    recChunks = []; recBlob = null;
+    recChunks = [];
     mediaRec.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
     mediaRec.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
-      btn.textContent = "Record 5-15s"; btn.classList.remove("active");
+      btn.textContent = kind === "clone" ? "Record 5-15s" : "Record your line";
       clearInterval(recTimer);
-      recBlob = new File(recChunks, "recording." + (mime.includes("mp4") ? "m4a" : mime.includes("webm") ? "webm" : "wav"), { type: mime || "audio/wav" });
-      // hand the recording to the upload flow via a DataTransfer
-      const dt = new DataTransfer();
-      dt.items.add(recBlob);
-      $("fileInput").files = dt.files;
-      setRecName("Recorded clip", Math.round(recBlob.size / 1024));
-      // clear the file input's visual hint if iOS drops it
-      if (!$("fileInput").files.length) { recBlob = null; $("fileName").textContent = "Recording blocked by browser — use Choose audio"; }
+      const ext = mime.includes("mp4") ? "m4a" : mime.includes("webm") ? "webm" : "wav";
+      const blob = new File(recChunks, "recording." + ext, { type: mime || "audio/wav" });
+      const kb = Math.round(blob.size / 1024);
+      if (kind === "clone") {
+        const dt = new DataTransfer();
+        dt.items.add(blob);
+        $("fileInput").files = dt.files;
+        nameEl.textContent = "Recorded clip (" + kb + " KB)";
+      } else {
+        sayFile = blob;
+        nameEl.textContent = "Recorded ✓ (" + kb + " KB) — tap the button to re-record";
+      }
     };
     mediaRec.start();
-    btn.textContent = "Stop recording";
     recStart = Date.now();
+    const maxSec = kind === "say" ? 60 : 20;
     recTimer = setInterval(() => {
       const s = Math.round((Date.now() - recStart) / 1000);
       btn.textContent = "Stop (" + s + "s)";
-      if (s >= 20) mediaRec.stop();
+      if (s >= maxSec) mediaRec.stop();
     }, 1000);
-  } catch (e) {
-    $("fileName").textContent = "Mic blocked — use Choose audio instead";
-  }
+  } catch (e) { $("sayFileName").textContent = "Mic blocked — check Safari mic permission"; }
 }
 
 // boot
-if (PW) { loadVoices(); } else { loadVoices(); }
+loadVoices(); loadUsage();
 </script>
 </body>
 </html>
