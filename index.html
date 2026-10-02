@@ -638,9 +638,9 @@ async function loadHistory() {
       d.className = "hitem" + (h.audioBase64 ? "" : " noaudio");
       const who = h.voiceName || h.voiceId || "voice";
       const txt = h.transcript || (h.chars + " chars");
-      d.innerHTML = '<div class="hplay">' + (h.audioBase64 ? "▶" : "–") + '</div>
-        <div class="hbody"><div class="htxt">' + esc(txt) + '</div>
-        <div class="hmeta">' + esc(who) + " · " + (h.source === "say" ? "🎙 say-mode" : "⌨️ typed") + " · " + ago(h.at) + "</div></div>";
+      d.innerHTML = '<div class="hplay">' + (h.audioBase64 ? "▶" : "–") + '</div>' +
+        '<div class="hbody"><div class="htxt">' + esc(txt) + '</div>' +
+        '<div class="hmeta">' + esc(who) + " · " + (h.source === "say" ? "say-mode" : "typed") + " · " + ago(h.at) + "</div></div>";
       if (h.audioBase64) d.onclick = () => { loadPlayer(h.audioBase64, who); window.scrollTo({ top: 0, behavior: "smooth" }); };
       el.appendChild(d);
     });
