@@ -8,7 +8,7 @@ module.exports = async (req, res) => {
     if (!checkAuth(req)) return json(res, 401, { error: "Wrong app password." });
     if (!hasInworld()) return json(res, 503, { error: "Inworld API key not configured yet.", needsSetup: true });
 
-    const { audioBase64, voiceId, encoding } = req.body || {};
+    const { audioBase64, voiceId, encoding, voiceName } = req.body || {};
     const enc = ["LINEAR16", "MP3"].includes(encoding) ? encoding : "LINEAR16";
     if (!audioBase64 || !voiceId) return json(res, 400, { error: "audioBase64 and voiceId are required." });
     if (audioBase64.length > 4_000_000) return json(res, 413, { error: "Recording too large. Keep it under ~3MB." });
@@ -58,9 +58,13 @@ module.exports = async (req, res) => {
 
     getDb().collection("voiceapp_generations").add({
       voiceId,
+      voiceName: voiceName || null,
       source: "say",
+      transcript: transcript.slice(0, 160),
       chars: transcript.length,
       delivery: { emotion, style, pitch },
+      tags,
+      audioBase64: out.audioContent.length <= 900_000 ? out.audioContent : null,
       at: new Date().toISOString(),
     }).catch(() => {});
 

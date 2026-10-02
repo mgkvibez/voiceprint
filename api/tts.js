@@ -6,7 +6,7 @@ module.exports = async (req, res) => {
     if (!checkAuth(req)) return json(res, 401, { error: "Wrong app password." });
     if (!hasInworld()) return json(res, 503, { error: "Inworld API key not configured yet.", needsSetup: true });
 
-    const { text, voiceId, modelId } = req.body || {};
+    const { text, voiceId, modelId, voiceName } = req.body || {};
     if (!text || !voiceId) return json(res, 400, { error: "text and voiceId are required." });
     if (text.length > 3000) return json(res, 400, { error: "Text too long (3000 char max)." });
 
@@ -18,11 +18,15 @@ module.exports = async (req, res) => {
     if (!out.audioContent)
       return json(res, 502, { error: "Inworld returned no audio.", detail: Object.keys(out) });
 
-    // Fire-and-forget usage log (never blocks the response)
+    // Fire-and-forget usage + history log (never blocks the response)
     getDb().collection("voiceapp_generations").add({
       voiceId,
+      voiceName: voiceName || null,
+      source: "type",
+      transcript: text.slice(0, 160),
       chars: text.length,
       usage: out.usage || null,
+      audioBase64: out.audioContent.length <= 900_000 ? out.audioContent : null,
       at: new Date().toISOString(),
     }).catch(() => {});
 
