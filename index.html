@@ -67,7 +67,8 @@
     <input type="text" id="cloneName" placeholder="Voice name (e.g. Michael)" />
     <div class="filebox">
       <button class="ghost" style="margin:0" onclick="fileInput.click()">Choose audio</button>
-      <input type="file" id="fileInput" accept="audio/*" style="display:none" />
+      <button class="ghost" style="margin:0" id="recBtn" onclick="toggleRec()">Record 5-15s</button>
+      <input type="file" id="fileInput" accept="audio/*,.mp3,.m4a,.wav,.ogg,.opus,.aac,.amr,.mp4,.3gp,audio/mpeg,audio/mp4,audio/x-m4a" style="display:none" />
       <div class="name" id="fileName">5–15s of clear speech (mp3/wav/m4a)</div>
     </div>
     <button id="cloneBtn" onclick="doClone()">Clone voice</button>
@@ -203,6 +204,52 @@ function download() {
   a.href = lastAudio;
   a.download = "voiceprint-" + Date.now() + ".mp3";
   a.click();
+}
+
+
+// --- recording ---
+let mediaRec = null, recChunks = [], recTimer = null, recStart = 0, recBlob = null;
+
+function setRecName(name, kb) {
+  $("fileName").textContent = name + " (" + kb + " KB)";
+}
+
+async function toggleRec() {
+  const btn = $("recBtn");
+  if (mediaRec && mediaRec.state === "recording") { mediaRec.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    let mime = "";
+    for (const m of ["audio/mp4", "audio/aac", "audio/webm;codecs=opus", "audio/webm"]) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) { mime = m; break; }
+    }
+    mediaRec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    recChunks = []; recBlob = null;
+    mediaRec.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+    mediaRec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      btn.textContent = "Record 5-15s"; btn.classList.remove("active");
+      clearInterval(recTimer);
+      recBlob = new File(recChunks, "recording." + (mime.includes("mp4") ? "m4a" : mime.includes("webm") ? "webm" : "wav"), { type: mime || "audio/wav" });
+      // hand the recording to the upload flow via a DataTransfer
+      const dt = new DataTransfer();
+      dt.items.add(recBlob);
+      $("fileInput").files = dt.files;
+      setRecName("Recorded clip", Math.round(recBlob.size / 1024));
+      // clear the file input's visual hint if iOS drops it
+      if (!$("fileInput").files.length) { recBlob = null; $("fileName").textContent = "Recording blocked by browser — use Choose audio"; }
+    };
+    mediaRec.start();
+    btn.textContent = "Stop recording";
+    recStart = Date.now();
+    recTimer = setInterval(() => {
+      const s = Math.round((Date.now() - recStart) / 1000);
+      btn.textContent = "Stop (" + s + "s)";
+      if (s >= 20) mediaRec.stop();
+    }, 1000);
+  } catch (e) {
+    $("fileName").textContent = "Mic blocked — use Choose audio instead";
+  }
 }
 
 // boot
