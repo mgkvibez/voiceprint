@@ -1,0 +1,20 @@
+# Runs the same gate a laptop runs. The point is that local and CI cannot drift:
+# scripts/verify.sh is the single definition of "green" for this repo.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify
+        run: bash scripts/verify.sh

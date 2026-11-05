@@ -1,12 +1,16 @@
 {
   "name": "voiceprint",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
-  "description": "Personal voice cloning studio — Inworld cloning + TTS, Firestore storage, Vercel hosting",
+  "description": "Personal voice cloning studio \u2014 Inworld cloning + TTS, Firestore storage, Vercel hosting",
   "dependencies": {
     "firebase-admin": "^12.0.0"
   },
   "devDependencies": {
     "vercel": "^62.1.0"
+  },
+  "license": "MIT",
+  "scripts": {
+    "verify": "bash scripts/verify.sh"
   }
 }
